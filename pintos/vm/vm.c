@@ -10,7 +10,7 @@
 #include "vm/inspect.h"
 
 // 프레임테이블, 카운트와 인덱스 전역 선언
-#define FRAME_TABLE_SIZE 3072
+#define FRAME_TABLE_SIZE 6144
 static struct frame *frame_table[FRAME_TABLE_SIZE];
 static size_t frame_count = 0;
 static size_t clock_hand = 0;
