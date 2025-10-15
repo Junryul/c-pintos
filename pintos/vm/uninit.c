@@ -28,16 +28,18 @@ void uninit_new(struct page *page, void *va, vm_initializer *init,
                 bool (*initializer)(struct page *, enum vm_type, void *)) {
   ASSERT(page != NULL);
 
-  *page = (struct page){.operations = &uninit_ops,  // operations->swap_in : uninit_initialize
-                        .va = va,
-                        .frame = NULL, /* no frame for now */
-                        .owner = thread_current(),
-                        .uninit = (struct uninit_page){
-                            .init = init, // lazy_load_segment
-                            .type = type,
-                            .aux = aux,
-                            .page_initializer = initializer,  // anon_initializer | file_backed_initializer
-                        }};
+  *page = (struct page){
+      .operations = &uninit_ops,  // operations->swap_in : uninit_initialize
+      .va = va,
+      .frame = NULL, /* no frame for now */
+      .owner = thread_current(),
+      .uninit = (struct uninit_page){
+          .init = init,  // lazy_load_segment
+          .type = type,
+          .aux = aux,
+          .page_initializer =
+              initializer,  // anon_initializer | file_backed_initializer
+      }};
 }
 
 /* Initalize the page on first fault */
@@ -50,11 +52,6 @@ static bool uninit_initialize(struct page *page, void *kva) {
 
   bool ok = uninit->page_initializer(page, uninit->type, kva) &&
             (init ? init(page, aux) : true);
-
-  /* 재진입, 이중 free 방지 */
-  /* aux는 lazy_load_segment에서 free */
-  uninit->init = NULL;
-  uninit->aux = NULL;
 
   return ok;
 }

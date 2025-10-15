@@ -2,6 +2,7 @@
 
 #include "vm/vm.h"
 
+#include "filesys/filesys.h"
 #include "threads/malloc.h"
 #include "threads/vaddr.h"
 #include "userprog/process.h"
@@ -407,11 +408,30 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
   return true;
 }
 
-void hash_action_destroy(struct hash_elem *e, void *aux UNUSED) {
-  ASSERT(e != NULL);
+// void hash_action_destroy(struct hash_elem *e, void *aux UNUSED) {
+//   ASSERT(e != NULL);
+//   struct page *page = hash_entry(e, struct page, hash_elem);
+//   ASSERT(page != NULL);
+//   vm_dealloc_page(page);
+// }
+
+static void hash_action_destroy(struct hash_elem *e, void *aux UNUSED) {
   struct page *page = hash_entry(e, struct page, hash_elem);
-  ASSERT(page != NULL);
-  vm_dealloc_page(page);
+  struct thread *t = thread_current();
+  if (page_get_type(page) == VM_FILE) {
+    bool mapped = pml4_get_page(t->pml4, page->va) != NULL;
+    bool dirty = mapped && pml4_is_dirty(t->pml4, page->va);
+    if (dirty && page->file.read_bytes > 0) {
+      void *kva = page->frame->kva;  // 프레임이 있다고 가정 (evict 미구현)
+      off_t ofs = page->file.ofs;
+      size_t n = page->file.read_bytes;
+      lock_acquire(&filesys_lock);
+      file_write_at(page->file.file, kva, n, ofs);
+      lock_release(&filesys_lock);
+    }
+    if (mapped) pml4_clear_page(t->pml4, page->va);
+  }
+  vm_dealloc_page(page);  // destroy(page) -> free(page)
 }
 
 /* Free the resource hold by the supplemental page table */

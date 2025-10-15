@@ -138,7 +138,7 @@ void syscall_handler(struct intr_frame* f UNUSED) {
       off_t offset = (off_t)f->R.r8;
 
       void* ret = mmap(addr, length, writable, fd, offset);
-      f->R.rax = (uint64_t)ret;
+      f->R.rax = (uintptr_t)ret;
       break;
     }
     case SYS_MUNMAP: {
@@ -146,7 +146,6 @@ void syscall_handler(struct intr_frame* f UNUSED) {
       if (addr && pg_ofs(addr) == 0) {
         do_munmap(addr);
       }
-      f->R.rax = 0;
       break;
     }
     case SYS_DUP2: {
@@ -346,6 +345,12 @@ int read(int fd, void* buffer, unsigned size) {
     }
     if (p && !p->writable) {
       exit(-1);
+    }
+
+    if (p && p->frame == NULL) {
+      if (!vm_claim_page(page)) {
+        exit(-1);
+      }
     }
   }
 
