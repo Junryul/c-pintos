@@ -583,10 +583,11 @@ static bool load(const char* file_name, struct intr_frame* if_) {
 
   /* Allocate and activate page directory. */
   t->pml4 = pml4_create();
-  if (t->pml4 == NULL) goto done;
+  if (t->pml4 == NULL) return success;
   process_activate(thread_current());
 
   /* Open executable file. */
+  lock_acquire(&filesys_lock);
   file = filesys_open(file_name);
   if (file == NULL) {
     printf("load: %s: open failed\n", file_name);
@@ -657,8 +658,18 @@ static bool load(const char* file_name, struct intr_frame* if_) {
     }
   }
 
+  // filesys_lock 해제(성공 시)
+  lock_release(&filesys_lock);
+
   /* Set up stack. */
-  if (!setup_stack(if_)) goto done;
+  if (!setup_stack(if_)) {
+    lock_acquire(&filesys_lock);
+    file_allow_write(file);
+    file_close(file);
+    lock_release(&filesys_lock);
+    t->running_file = NULL;
+    return success;
+  }
 
   /* Start address. */
   if_->rip = ehdr.e_entry;
@@ -667,6 +678,7 @@ static bool load(const char* file_name, struct intr_frame* if_) {
    * TODO: Implement argument passing (see project2/argument_passing.html). */
 
   success = true;
+  return success;
 
 done:
   /* We arrive here whether the load is successful or not. */
@@ -676,6 +688,9 @@ done:
     file_close(file);
     t->running_file = NULL;
   }
+
+  // filesys_lock 해제(실패 시)
+  lock_release(&filesys_lock);
 
   return success;
 }

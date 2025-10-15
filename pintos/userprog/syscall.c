@@ -41,7 +41,6 @@ unsigned tell(int fd);
 void close(int fd);
 bool copy_in(void* dst, const void* usrc, size_t size);
 bool copy_in_string(char* dst, const char* us, size_t dst_sz, size_t* out_len);
-static struct lock filesys_lock;
 int exec(const char* cmd_line);
 pid_t fork(const char* thread_name, struct intr_frame* if_);
 int wait(pid_t pid);
@@ -59,7 +58,6 @@ void syscall_init(void) {
   write_msr(MSR_LSTAR, (uint64_t)syscall_entry);
   write_msr(MSR_SYSCALL_MASK,
             FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
-  lock_init(&filesys_lock);
 }
 
 /* The main system call interface */
@@ -192,7 +190,9 @@ bool create(const char* file, unsigned initial_size) {
     return false;
   }
 
+  lock_acquire(&filesys_lock);
   bool ok = filesys_create(fname, initial_size);
+  lock_release(&filesys_lock);
 
   return ok;
 }
@@ -215,7 +215,10 @@ bool remove(const char* file) {
     return false;
   }
 
+  lock_acquire(&filesys_lock);
   bool ok = filesys_remove(fname);
+  lock_release(&filesys_lock);
+
   return ok;
 }
 
@@ -295,7 +298,9 @@ int write(int fd, const void* buffer, unsigned size) {
       exit(-1);
     }
 
+    lock_acquire(&filesys_lock);
     int bytes_written = file_write(file, kbuff, chunk_size);
+    lock_release(&filesys_lock);
     palloc_free_page(kbuff);
 
     if (bytes_written != chunk_size) {
@@ -370,7 +375,9 @@ int open(const char* file) {
 
   kname[len] = '\0';
 
+  lock_acquire(&filesys_lock);
   struct file* f = filesys_open(kname);
+  lock_release(&filesys_lock);
 
   if (f == NULL) {
     return -1;
@@ -385,7 +392,10 @@ int open(const char* file) {
     }
   }
 
+  lock_acquire(&filesys_lock);
   file_close(f);
+  lock_release(&filesys_lock);
+
   return -1;
 }
 
@@ -418,7 +428,9 @@ void close(int fd) {
   }
 
   if (file_should_close(file)) {
+    lock_acquire(&filesys_lock);
     file_close(file);
+    lock_release(&filesys_lock);
   }
 
   curr->fdt[fd] = NULL;
